@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Catálogo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Catálogo Mercadona</h1>
+        <p class="page-subtitle">4.322 productos disponibles</p>
+    </div>
+</div>
+
+<div class="search-bar-wrap">
+    <input
+        type="search"
+        id="search-input"
+        class="search-input"
+        placeholder="Buscar producto…"
+        autocomplete="off"
+    >
+    <select id="cat-select" class="cat-select">
+        <option value="">Todas las categorías</option>
+        {% for cat in categorias %}
+        <option value="{{ cat.id_categoria }}">{{ cat.nombre }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+<div id="resultados" class="productos-grid catalogo-grid">
+    <p class="search-hint">Escribe al menos 2 caracteres para buscar…</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const searchInput = document.getElementById('search-input');
+const catSelect   = document.getElementById('cat-select');
+const resultados  = document.getElementById('resultados');
+let debounceTimer;
+
+function buscar() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+        const q   = searchInput.value.trim();
+        const cat = catSelect.value;
+
+        if (q.length < 2 && !cat) {
+            resultados.innerHTML = '<p class="search-hint">Escribe al menos 2 caracteres para buscar…</p>';
+            return;
+        }
+
+        resultados.innerHTML = '<p class="search-hint">Buscando…</p>';
+        const params = new URLSearchParams({ q, categoria: cat });
+        const res = await fetch(`/api/productos?${params}`);
+        const items = await res.json();
+
+        if (!items.length) {
+            resultados.innerHTML = '<p class="search-hint">Sin resultados.</p>';
+            return;
+        }
+
+        resultados.innerHTML = items.map(p => `
+            <div class="producto-card">
+                <div class="producto-img-wrap">
+                    <img src="${p.url_imagen}" alt="${p.nombre}" class="producto-img" loading="lazy"
+                         onerror="this.src='/static/img/placeholder.svg'">
+                </div>
+                <div class="producto-info">
+                    <span class="producto-cat-badge">${p.categoria}</span>
+                    <p class="producto-nombre">${p.nombre}</p>
+                </div>
+            </div>
+        `).join('');
+    }, 300);
+}
+
+searchInput.addEventListener('input', buscar);
+catSelect.addEventListener('change', buscar);
+</script>
+{% endblock %}

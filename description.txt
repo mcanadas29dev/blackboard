@@ -1,0 +1,30 @@
+
+Estrategia Docker
+*****************
+
+Un solo contenedor con Gunicorn sirviendo Flask en puerto 8001
+La carpeta ./data/ del host se monta como volumen en /app/data/ dentro del contenedor → el .sqlite nunca está dentro de la imagen
+El túnel Cloudflare apunta a localhost:8001 → expone pizarra.mcanadas29dev.com
+
+Estrategia de autenticación
+***************************
+
+flask-login para gestión de sesión
+Los usuarios se guardarán en la misma BD SQLite en una tabla users (o la que ya tengas)
+Contraseñas con hash werkzeug.security (pbkdf2)
+Rutas protegidas con @login_required
+
+Dependencias principales (requirements.txt)
+*******************************************
+Flask
+flask-login
+flask-wtf
+python-dotenv
+gunicorn
+werkzeug
+
+En tu config de cloudflare tunnel en Debian, añadirás:
+yaml
+ingress:
+  - hostname: pizarra.mcanadas29dev.com
+    service: http://localhost:8001

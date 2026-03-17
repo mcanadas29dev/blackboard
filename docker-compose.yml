@@ -1,0 +1,22 @@
+services:
+  pizarra:
+    build: .
+    container_name: pizarra_app
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      # La BD y users.db persisten en el host — nunca dentro de la imagen
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - FLASK_ENV=production
+      - PIZARRA_DB_PATH=/app/data/ipizarra.db
+      - USERS_DB_PATH=/app/data/users.db
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/auth/login')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
