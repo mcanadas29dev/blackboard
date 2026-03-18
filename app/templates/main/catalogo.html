@@ -23,7 +23,12 @@
         <option value="{{ cat.id_categoria }}">{{ cat.nombre }}</option>
         {% endfor %}
     </select>
+    <button id="add-selected-btn" type="button" class="btn-primary" disabled>
+        Añadir seleccionados (0)
+    </button>
 </div>
+
+<p id="catalogo-feedback" class="search-hint" style="display:none;"></p>
 
 <div id="resultados" class="productos-grid catalogo-grid">
     <p class="search-hint">Escribe al menos 2 caracteres para buscar…</p>
@@ -32,48 +37,148 @@
 
 {% block extra_js %}
 <script>
-const searchInput = document.getElementById('search-input');
-const catSelect   = document.getElementById('cat-select');
-const resultados  = document.getElementById('resultados');
-let debounceTimer;
+document.addEventListener('DOMContentLoaded', () => {   
+    const searchInput = document.getElementById('search-input');
+    const catSelect   = document.getElementById('cat-select');
+    const resultados  = document.getElementById('resultados');
+    const feedbackEl  = document.getElementById('catalogo-feedback');
+    const addSelectedBtn = document.getElementById('add-selected-btn');
+    let debounceTimer;
 
-function buscar() {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(async () => {
-        const q   = searchInput.value.trim();
-        const cat = catSelect.value;
+    function getCsrfToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.content || '';
+    }
 
-        if (q.length < 2 && !cat) {
-            resultados.innerHTML = '<p class="search-hint">Escribe al menos 2 caracteres para buscar…</p>';
-            return;
+    function mostrarFeedback(texto, esError = false) {
+        feedbackEl.textContent = texto;
+        feedbackEl.style.display = 'block';
+        feedbackEl.style.color = esError ? 'var(--danger)' : 'var(--accent)';
+        clearTimeout(mostrarFeedback.timer);
+        mostrarFeedback.timer = setTimeout(() => {
+            feedbackEl.style.display = 'none';
+        }, 2200);
+    }
+
+    function actualizarBotonSeleccion() {
+        const totalSeleccionados = resultados.querySelectorAll('.producto-card--catalogo.selected').length;
+        addSelectedBtn.disabled = totalSeleccionados === 0;
+        addSelectedBtn.textContent = `Añadir seleccionados (${totalSeleccionados})`;
+    }
+
+    function toggleSeleccion(card) {
+        if (!card || card.classList.contains('comprado')) return;
+        card.classList.toggle('selected');
+        actualizarBotonSeleccion();
+    }
+
+    async function addProductoById(idProducto) {
+        const res = await fetch('/api/lista/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            },
+            body: JSON.stringify({ id_producto: idProducto }),
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+            throw new Error(data.message || 'No se pudo añadir el producto');
         }
 
-        resultados.innerHTML = '<p class="search-hint">Buscando…</p>';
-        const params = new URLSearchParams({ q, categoria: cat });
-        const res = await fetch(`/api/productos?${params}`);
-        const items = await res.json();
+        return data;
+    }
 
-        if (!items.length) {
-            resultados.innerHTML = '<p class="search-hint">Sin resultados.</p>';
-            return;
+    async function addSeleccionados() {
+        const seleccionados = Array.from(resultados.querySelectorAll('.producto-card--catalogo.selected'));
+        if (!seleccionados.length) return;
+
+        addSelectedBtn.disabled = true;
+        let addedCount = 0;
+        let alreadyCount = 0;
+
+        try {
+            for (const card of seleccionados) {
+                const idProducto = Number(card.dataset.productoId);
+                if (!idProducto) continue;
+
+                const data = await addProductoById(idProducto);
+                if (data.added) {
+                    addedCount += 1;
+                } else {
+                    alreadyCount += 1;
+                }
+
+                card.classList.remove('selected');
+                card.classList.add('comprado');
+            }
+
+            mostrarFeedback(`Añadidos: ${addedCount}. Ya existentes: ${alreadyCount}.`);
+        } catch (err) {
+            mostrarFeedback(err.message || 'Error al añadir productos', true);
+        } finally {
+            actualizarBotonSeleccion();
         }
+    }
 
-        resultados.innerHTML = items.map(p => `
-            <div class="producto-card">
-                <div class="producto-img-wrap">
-                    <img src="${p.url_imagen}" alt="${p.nombre}" class="producto-img" loading="lazy"
-                         onerror="this.src='/static/img/placeholder.svg'">
-                </div>
-                <div class="producto-info">
-                    <span class="producto-cat-badge">${p.categoria}</span>
-                    <p class="producto-nombre">${p.nombre}</p>
-                </div>
-            </div>
-        `).join('');
-    }, 300);
-}
+    function buscar() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+            const q   = searchInput.value.trim();
+            const cat = catSelect.value;
 
-searchInput.addEventListener('input', buscar);
-catSelect.addEventListener('change', buscar);
+            if (q.length < 2 && !cat) {
+                resultados.innerHTML = '<p class="search-hint">Escribe al menos 2 caracteres para buscar…</p>';
+                return;
+            }
+
+            resultados.innerHTML = '<p class="search-hint">Buscando…</p>';
+            const params = new URLSearchParams({ q, categoria: cat });
+            const res = await fetch(`/api/productos?${params}`);
+            const items = await res.json();
+
+            if (!items.length) {
+                resultados.innerHTML = '<p class="search-hint">Sin resultados.</p>';
+                actualizarBotonSeleccion();
+                return;
+            }
+
+            resultados.innerHTML = items.map(p => `
+                <div class="producto-card producto-card--catalogo" data-producto-id="${p.id_producto}" role="button" tabindex="0" aria-label="Seleccionar ${p.nombre} para añadir a la lista">
+                    <div class="producto-img-wrap">
+                        <img src="${p.url_imagen}" alt="${p.nombre}" class="producto-img" loading="lazy"
+                            onerror="this.src='/static/img/placeholder.svg'">
+                    </div>
+                    <div class="producto-info">
+                        <span class="producto-cat-badge">${p.categoria}</span>
+                        <p class="producto-nombre">${p.nombre}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            actualizarBotonSeleccion();
+        }, 300);
+    }
+
+    searchInput.addEventListener('input', buscar);
+    catSelect.addEventListener('change', buscar);
+
+    resultados.addEventListener('click', (e) => {
+        const card = e.target.closest('.producto-card--catalogo');
+        if (!card) return;
+        toggleSeleccion(card);
+    });
+
+    resultados.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const card = e.target.closest('.producto-card--catalogo');
+        if (!card) return;
+        e.preventDefault();
+        toggleSeleccion(card);
+    });
+
+    addSelectedBtn.addEventListener('click', addSeleccionados);
+
+});
 </script>
 {% endblock %}

@@ -1,4 +1,4 @@
-from flask import render_template, jsonify, abort
+from flask import render_template, jsonify, abort, request
 from flask_login import login_required
 
 from app.database import get_pizarra_db, get_pizarra_db_write
@@ -69,6 +69,17 @@ def toggle_comprado(item_id):
     return jsonify({"id": item_id, "comprado": bool(nuevo_estado)})
 
 
+@main_bp.route("/api/lista/clear", methods=["POST"])
+@login_required
+def api_lista_clear():
+    """Elimina por completo la lista de compra activa."""
+    db_w = get_pizarra_db_write()
+    cursor = db_w.execute("DELETE FROM lista_compra")
+    db_w.commit()
+
+    return jsonify({"ok": True, "deleted": cursor.rowcount or 0})
+
+
 @main_bp.route("/catalogo")
 @login_required
 def catalogo():
@@ -82,12 +93,49 @@ def catalogo():
     return render_template("main/catalogo.html", categorias=categorias)
 
 
+@main_bp.route("/api/lista/add", methods=["POST"])
+@login_required
+def api_lista_add():
+    """Añade un producto a la lista de compra (sin duplicados)."""
+    payload = request.get_json(silent=True) or {}
+    product_id = payload.get("id_producto")
+
+    try:
+        product_id = int(product_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "id_producto inválido"}), 400
+
+    db = get_pizarra_db()
+    product_exists = db.execute(
+        "SELECT id_producto FROM productos_mercadona WHERE id_producto = ?",
+        (product_id,),
+    ).fetchone()
+
+    if not product_exists:
+        return jsonify({"ok": False, "message": "Producto no encontrado"}), 404
+
+    db_w = get_pizarra_db_write()
+    existing = db_w.execute(
+        "SELECT id FROM lista_compra WHERE id_producto = ?",
+        (product_id,),
+    ).fetchone()
+
+    if existing:
+        return jsonify({"ok": True, "added": False, "item_id": existing["id"]}), 200
+
+    cursor = db_w.execute(
+        "INSERT INTO lista_compra (id_producto, comprado) VALUES (?, 0)",
+        (product_id,),
+    )
+    db_w.commit()
+
+    return jsonify({"ok": True, "added": True, "item_id": cursor.lastrowid}), 201
+
+
 @main_bp.route("/api/productos")
 @login_required
 def api_productos():
     """Endpoint JSON para búsqueda dinámica de productos"""
-    from flask import request
-
     q = request.args.get("q", "").strip()
     cat_id = request.args.get("categoria", "").strip()
     db = get_pizarra_db()

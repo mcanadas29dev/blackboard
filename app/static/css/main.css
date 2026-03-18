@@ -129,6 +129,12 @@ body {
     margin-top: .25rem;
 }
 
+.page-actions {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+}
+
 /* ─── Progress bar ───────────────────────────────────── */
 .progress-bar-wrap {
     height: 6px;
@@ -377,6 +383,25 @@ body {
 .btn-primary:hover  { background: #235e43; }
 .btn-primary:active { transform: scale(.98); }
 .btn-block { width: 100%; }
+
+.btn-danger {
+    background: var(--danger);
+    color: #fff;
+    border: none;
+    padding: .55rem .9rem;
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-size: .82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity .2s;
+}
+.btn-danger:hover { opacity: .9; }
+
+.producto-card--catalogo.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(45, 106, 79, .2);
+}
 
 /* ─── Search bar ─────────────────────────────────────── */
 .search-bar-wrap {

@@ -7,17 +7,21 @@
         <h1 class="page-title">Lista de la compra</h1>
         <p class="page-subtitle">{{ comprados }} de {{ total }} productos comprados</p>
     </div>
-    <div class="progress-ring-wrap">
-        <svg class="progress-ring" width="64" height="64">
-            <circle class="progress-ring__bg" cx="32" cy="32" r="26"/>
-            <circle class="progress-ring__fill" cx="32" cy="32" r="26"
-                    style="--pct: {{ (comprados / total * 100) | int if total > 0 else 0 }}"/>
-        </svg>
-        <span class="progress-label">{{ (comprados / total * 100) | int if total > 0 else 0 }}%</span>
+    <div class="page-actions">
+        <button type="button" class="btn-danger" onclick="vaciarLista()">Vaciar lista</button>
+        <div class="progress-ring-wrap">
+            <svg class="progress-ring" width="64" height="64">
+                <circle class="progress-ring__bg" cx="32" cy="32" r="26"/>
+                <circle class="progress-ring__fill" cx="32" cy="32" r="26"
+                        style="--pct: {{ (comprados / total * 100) | int if total > 0 else 0 }}"/>
+            </svg>
+            <span class="progress-label">{{ (comprados / total * 100) | int if total > 0 else 0 }}%</span>
+        </div>
     </div>
 </div>
 
 <div class="progress-bar-wrap">
+   
     <div class="progress-bar" style="width: {{ (comprados / total * 100) | int if total > 0 else 0 }}%"></div>
 </div>
 
@@ -39,7 +43,7 @@
                         alt="{{ item.nombre }}"
                         class="producto-img"
                         loading="lazy"
-                        onerror="this.src='{{ url_for('static', filename='img/placeholder.svg') }}'"
+                        onerror="this.onerror=null;this.src='{{ url_for('static', filename='img/placeholder.svg') }}'"
                     >
                     <div class="producto-check-overlay">
                         <span class="check-icon">✓</span>
@@ -50,7 +54,7 @@
                     <button
                         class="btn-toggle"
                         data-id="{{ item.id }}"
-                        onclick="toggleComprado({{ item.id }}, this)"
+                        onclick="toggleComprado({{ item.id }} , this)"
                         aria-label="{% if item.comprado %}Desmarcar{% else %}Marcar como comprado{% endif %}"
                     >
                         {% if item.comprado %}Desmarcar{% else %}Marcar{% endif %}
@@ -69,55 +73,73 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-async function toggleComprado(id, btn) {
-    btn.disabled = true;
-    try {
-        const res = await fetch(`/toggle/${id}`, { method: 'POST', headers: { 'X-CSRFToken': getCsrfToken() } });
-        if (!res.ok) throw new Error('Error en servidor');
-        const data = await res.json();
-        const card = document.querySelector(`.producto-card[data-id="${id}"]`);
-        if (data.comprado) {
-            card.classList.add('comprado');
-            btn.textContent = 'Desmarcar';
-        } else {
-            card.classList.remove('comprado');
-            btn.textContent = 'Marcar';
+    <script>
+    async function vaciarLista() {
+        const confirmar = window.confirm('Se eliminaran todos los productos de la lista activa. Continuar?');
+        if (!confirmar) return;
+
+        try {
+            const res = await fetch('/api/lista/clear', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCsrfToken() },
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) throw new Error('No se pudo vaciar la lista');
+            window.location.reload();
+        } catch (e) {
+            alert('Error al vaciar la lista. Intenta de nuevo.');
         }
-        actualizarProgreso();
-    } catch (e) {
-        alert('Error al actualizar. Intenta de nuevo.');
-    } finally {
-        btn.disabled = false;
     }
-}
 
-function getCsrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.content || '';
-}
+    async function toggleComprado(id, btn) {
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/toggle/${id}`, { method: 'POST', headers: { 'X-CSRFToken': getCsrfToken() } });
+            if (!res.ok) throw new Error('Error en servidor');
+            const data = await res.json();
+            const card = document.querySelector(`.producto-card[data-id="${id}"]`);
+            if (data.comprado) {
+                card.classList.add('comprado');
+                btn.textContent = 'Desmarcar';
+            } else {
+                card.classList.remove('comprado');
+                btn.textContent = 'Marcar';
+            }
+            actualizarProgreso();
+        } catch (e) {
+            alert('Error al actualizar. Intenta de nuevo.');
+        } finally {
+            btn.disabled = false;
+        }
+    }
 
-function actualizarProgreso() {
-    const total = document.querySelectorAll('.producto-card').length;
-    const comprados = document.querySelectorAll('.producto-card.comprado').length;
-    const pct = total > 0 ? Math.round(comprados / total * 100) : 0;
+    function getCsrfToken() {
+        return document.querySelector('meta[name="csrf-token"]')?.content || '';
+    }
 
-    document.querySelector('.progress-bar').style.width = pct + '%';
-    document.querySelector('.progress-label').textContent = pct + '%';
-    document.querySelector('.page-subtitle').textContent =
-        `${comprados} de ${total} productos comprados`;
+    function actualizarProgreso() {
+        const total = document.querySelectorAll('.producto-card').length;
+        const comprados = document.querySelectorAll('.producto-card.comprado').length;
+        const pct = total > 0 ? Math.round(comprados / total * 100) : 0;
 
-    // SVG ring
-    const circle = document.querySelector('.progress-ring__fill');
-    const r = 26;
-    const circunferencia = 2 * Math.PI * r;
-    circle.style.strokeDashoffset = circunferencia - (pct / 100) * circunferencia;
+        document.querySelector('.progress-bar').style.width = pct + '%';
+        document.querySelector('.progress-label').textContent = pct + '%';
+        document.querySelector('.page-subtitle').textContent =
+            `${comprados} de ${total} productos comprados`;
 
-    // Contadores por categoría
-    document.querySelectorAll('.categoria-section').forEach(sec => {
-        const t = sec.querySelectorAll('.producto-card').length;
-        const c = sec.querySelectorAll('.producto-card.comprado').length;
-        sec.querySelector('.categoria-count').textContent = `${c}/${t}`;
-    });
-}
-</script>
+        // SVG ring
+        const circle = document.querySelector('.progress-ring__fill');
+        const r = 26;
+        const circunferencia = 2 * Math.PI * r;
+        circle.style.strokeDashoffset = circunferencia - (pct / 100) * circunferencia;
+
+        // Contadores por categoría
+        document.querySelectorAll('.categoria-section').forEach(sec => {
+            const t = sec.querySelectorAll('.producto-card').length;
+            const c = sec.querySelectorAll('.producto-card.comprado').length;
+            sec.querySelector('.categoria-count').textContent = `${c}/${t}`;
+        });
+    }
+
+    </script>
 {% endblock %}
